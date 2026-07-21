@@ -12,8 +12,9 @@ class Transformer(torch.nn.Module):
 		self.head_dim = embedding_dimension // nb_heads
 		self.max_seq_len = max_seq_len
 
-		if embedding_dimension % nb_heads != 0:
-			print("embedding_dimension % nb_heads != 0")
+		# if embedding_dimension % nb_heads != 0:
+		#	print("embedding_dimension % nb_heads != 0")
+		assert embedding_dimension % nb_heads == 0, "embedding_dimension % nb_heads != 0"
 
 		self.layer_norm_1 = torch.nn.LayerNorm(embedding_dimension)
 
@@ -39,7 +40,7 @@ class Transformer(torch.nn.Module):
 
 		self.post_mlp_dropout = torch.nn.Dropout(0.1)
 	
-	def forward(self, x):
+	def forward(self, x, use_cache=False, kv_cache=None, cached_seq_len=0):
 
 		batch_size = x.shape[0]
 		seq_len = x.shape[1]
@@ -55,13 +56,31 @@ class Transformer(torch.nn.Module):
 		K = K.view(batch_size, seq_len, self.nb_heads, self.head_dim)
 		V = V.view(batch_size, seq_len, self.nb_heads, self.head_dim)
 
-		Q = Q.transpose(1, 2)
+		Q = Q.transpose(1, 2) # -> batch_size, head, seqlen, head_dim
 		K = K.transpose(1, 2)
 		V = V.transpose(1, 2)
 
+		if use_cache is True:
+			if kv_cache is not None:
+				K_cache, V_cache = kv_cache
+
+			else:
+				K_cache = torch.zeros((batch_size, self.nb_heads, self.max_seq_len, self.head_dim), device=x.device)
+				V_cache = torch.zeros((batch_size, self.nb_heads, self.max_seq_len, self.head_dim), device=x.device)
+			
+			K_cache[:, :, cached_seq_len:cached_seq_len+seq_len, :] = K
+			V_cache[:, :, cached_seq_len:cached_seq_len+seq_len, :] = V
+		else:
+			pass
+
+		past_len = cached_seq_len if (kv_cache is not None and use_cache is True) else 0
+		total_len = past_len + seq_len
+
+		effective_K = K_cache[:, :, :total_len, :] if use_cache else K
+		effective_V = V_cache[:, :, :total_len, :] if use_cache else V
 		# can't do this because of third dimension: batch
 		# scores = (Q @ K.T) / math.sqrt(self.embedding_dimension)
-		scores = (Q @ K.transpose(-2, -1)) / math.sqrt(self.head_dim)
+		scores = (Q @ effective_K.transpose(-2, -1)) / math.sqrt(self.head_dim)
 
 		# mask = torch.triu(torch.ones(scores.shape), diagonal=1).bool()
 		# turns out torch.ones(scores.shape) will need to be carried over to the gpu
@@ -73,7 +92,8 @@ class Transformer(torch.nn.Module):
 		# whereas we can have (seqlen, seqlen) and let pytorch broadcast:
 		# mask = torch.triu(torch.ones(seq_len, seq_len, device=x.device), diagonal=1).bool()
 		# how to chache: (look at init)
-		mask = self.mask[:seq_len, :seq_len]
+		# mask = self.mask[:seq_len, :seq_len]
+		mask = self.mask[past_len:past_len + seq_len, :total_len]
 
 		scores = scores.masked_fill(mask, torch.finfo(scores.dtype).min)
 
@@ -81,7 +101,7 @@ class Transformer(torch.nn.Module):
 		# attention = torch.softmax(scores, dim=-1) @ V
 		attention_weights = torch.softmax(scores, dim=-1)
 		attention_weights = self.attention_weights_dropout(attention_weights)
-		attention = attention_weights @ V
+		attention = attention_weights @ effective_V
 
 		attention = attention.transpose(1, 2)
 		attention = attention.reshape(batch_size, seq_len, self.embedding_dimension)
@@ -103,4 +123,9 @@ class Transformer(torch.nn.Module):
 
 		x = residual_2 + x
 
-		return x
+		if use_cache:
+			return x, (K_cache, V_cache), cached_seq_len + seq_len
+		else:
+			return x
+
+
