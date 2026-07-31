@@ -8,6 +8,6 @@ Readme will be written once the roadmap has been completed.
 - &#x2611; Multi-head Attention
 - &#x2611; KV-cache
 - &#x2610; Mixed precision (AMP)
-- &#x2610; Rotary Position Embeddings (RoPE)
+- &#x2611; Rotary Position Embeddings (RoPE)
 - &#x2610; Grouped Query Attention (GQA)
 

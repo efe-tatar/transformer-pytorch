@@ -45,7 +45,8 @@ class GPT_2(torch.nn.Module):
 		# position_ids = torch.arange(tokens.shape[1], device=tokens.device)
 		position_ids = torch.arange(cached_seq_len, cached_seq_len + tokens.shape[1], device=tokens.device)
 		position_embeddings = self.position_embedding(position_ids)
-		x = token_embeddings + position_embeddings
+		# added RoPE to transformers
+		# x = token_embeddings + position_embeddings
 		x = self.embedding_dropout(x)
 
 		if use_cache and kv_cache_list is None:

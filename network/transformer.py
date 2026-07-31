@@ -20,6 +20,30 @@ class Transformer(torch.nn.Module):
 
 		self.W_QKV = torch.nn.Linear(embedding_dimension, 3*embedding_dimension, bias=False)
 
+		# rope precomputations
+		pairs = torch.arange(0, self.head_dim, 2)
+		base = 10000
+		# axes are paired consecutively.
+		# frequency gets smaller as the pair index increases
+		# having multiple rotation speeds let's us avoid having identical rotations for different tokens.
+		inv_frequency = base ** (-pairs / self.head_dim) # (head_dim / 2, )
+		positions = torch.arange(max_seq_len) # (max_seq_len,)
+
+		# positions[:, None] -> (max_seq_len, 1)
+		# inv_frequency[None, :] -> (1, head_dim/2)
+		# this notation adds an additional dimension
+		angles = positions[:, None] * inv_frequency[None, :] # build a matrix out of these
+		# so we get (max_seq_len, head_dim / 2)
+
+		# 2d rotation matrix: [[cos, -sin], [sin, cos]]
+		# compute and cache
+		cos_angles = angles.cos()
+		sin_angles = angles.sin()
+		self.register_buffer("angle_cos_cache", cos_angles)
+		self.register_buffer("angle_sin_cache", sin_angles)
+
+
+
 		self.register_buffer(
 			"mask",
 			torch.triu(torch.ones(max_seq_len, max_seq_len), diagonal=1).bool()
@@ -59,6 +83,39 @@ class Transformer(torch.nn.Module):
 		Q = Q.transpose(1, 2) # -> batch_size, head, seqlen, head_dim
 		K = K.transpose(1, 2)
 		V = V.transpose(1, 2)
+
+		position_ids = torch.arange(cached_seq_len, cached_seq_len + seq_len, device=Q.device)
+		cos = self.angle_cos_cache[position_ids][None, None, :, :] # to add dimensions for batch size and number of heads
+		sin = self.angle_sin_cache[position_ids][None, None, :, :]
+
+		# ... takes all previous dimensions
+		# ::2 is every second element and 1::2 is every second element starting from 1
+		# same as Q[:, :, :, ::2]
+		# I don't really know why we choose to pair adjacent dims.
+		# Couldn't find an anwser.
+		# Wouldn't splitting the dimensions into two be easier because
+		# the elements would be contigious in memory ? idk
+		# oh wait askip that's what llama does ?
+		Q_even = Q[..., ::2]
+		Q_odd = Q[..., 1::2]
+		Q_even_rot = Q_even * cos - Q_odd * sin
+		Q_odd_rot = Q_even * sin + Q_odd * cos
+
+		# oh wait turns out this breaks autograd :(
+		# ok so what breaks autograd is directly editing the Q matrix, quite expected actually hmmm
+		# just create a new one
+		Q = torch.empty_like(Q)
+		Q[..., ::2] = Q_even_rot
+		Q[..., 1::2] = Q_odd_rot
+
+		K_even = K[..., ::2]
+		K_odd = K[..., 1::2]
+		K_even_rot = K_even * cos - K_odd * sin
+		K_odd_rot = K_even * sin + K_odd * cos
+
+		K = torch.empty_like(K)
+		K[..., ::2] = K_even_rot
+		K[..., 1::2] = K_odd_rot
 
 		if use_cache is True:
 			if kv_cache is not None:
