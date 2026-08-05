@@ -3,9 +3,9 @@ import torch
 import math
 from network.transformer import Transformer
 
-class GPT_2(torch.nn.Module):
+class CausalLM(torch.nn.Module):
 
-	def __init__(self, embedding_dimension, nb_trans_blocks, vocabulary_size, max_seq_len, nb_heads):
+	def __init__(self, embedding_dimension, nb_trans_blocks, vocabulary_size, max_seq_len, nb_heads, nb_kv_heads):
 		super().__init__()
 
 		self.embedding_dimension = embedding_dimension
@@ -13,11 +13,11 @@ class GPT_2(torch.nn.Module):
 		self.max_seq_len = max_seq_len
 
 		self.token_embedding = torch.nn.Embedding(vocabulary_size, embedding_dimension)
-		self.position_embedding = torch.nn.Embedding(max_seq_len, embedding_dimension)
+		# self.position_embedding = torch.nn.Embedding(max_seq_len, embedding_dimension)
 
 		self.embedding_dropout = torch.nn.Dropout(0.1)
 
-		self.blocks = torch.nn.ModuleList([Transformer(embedding_dimension, nb_heads, max_seq_len) for i in range(nb_trans_blocks)])
+		self.blocks = torch.nn.ModuleList([Transformer(embedding_dimension, nb_heads, nb_kv_heads, max_seq_len) for i in range(nb_trans_blocks)])
 
 		self.post_trans_norm_layer = torch.nn.LayerNorm(embedding_dimension)
 
@@ -43,11 +43,11 @@ class GPT_2(torch.nn.Module):
 
 		# the following line doesnt take into account kv cache.
 		# position_ids = torch.arange(tokens.shape[1], device=tokens.device)
-		position_ids = torch.arange(cached_seq_len, cached_seq_len + tokens.shape[1], device=tokens.device)
-		position_embeddings = self.position_embedding(position_ids)
+		# position_ids = torch.arange(cached_seq_len, cached_seq_len + tokens.shape[1], device=tokens.device)
+		# position_embeddings = self.position_embedding(position_ids)
 		# added RoPE to transformers
 		# x = token_embeddings + position_embeddings
-		x = self.embedding_dropout(x)
+		x = self.embedding_dropout(token_embeddings)
 
 		if use_cache and kv_cache_list is None:
 			kv_cache_list = [None for j in range(len(self.blocks))]

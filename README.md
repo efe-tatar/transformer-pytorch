@@ -9,5 +9,5 @@ Readme will be written once the roadmap has been completed.
 - &#x2611; KV-cache
 - &#x2610; Mixed precision (AMP)
 - &#x2611; Rotary Position Embeddings (RoPE)
-- &#x2610; Grouped Query Attention (GQA)
+- &#x2611; Grouped Query Attention (GQA)
 
