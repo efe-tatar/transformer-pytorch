@@ -94,7 +94,45 @@ class BPETokenizer:
 
 			pairs.pop(pair)
 
-		print(vocab)
 		self.vocab = vocab
 		self.merges = merges
-	pass
+
+	def encode(self, corpus):
+
+		pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+		regex = re.compile(pattern)
+
+		words_list = regex.findall(corpus)
+
+		tokens = []
+
+		for word in words_list:
+			byte_values = list(map(int, word.encode("utf-8")))
+
+			while len(byte_values) > 1:
+				pairs = {(byte_values[i], byte_values[i+1]) for i in range(len(byte_values) - 1)}
+
+				pair = min(pairs, key= lambda x : self.merges.get(x, float("inf")))
+
+				if pair not in self.merges.keys():
+					break
+
+				i = 0
+				while True:
+					if byte_values[i] == pair[0] and byte_values[i+1] == pair[1]:
+						byte_values.pop(i+1)
+						byte_values[i] = self.merges[pair]
+
+					i += 1
+					if i >= len(byte_values) - 1:
+						break
+
+			tokens.extend(byte_values)
+
+		return tokens
+
+	def decode(self, tokens):
+
+		return b"".join(list(map(lambda x : self.vocab[x], tokens))).decode("utf-8")
+
+
