@@ -1,6 +1,7 @@
 
 import heapq
 import regex as re
+import json
 
 class BPETokenizer:
 
@@ -35,10 +36,10 @@ class BPETokenizer:
 			for i in range(len(byte_values) - 1):
 				pair = (byte_values[i], byte_values[i+1])
 
-				pairs.setdefault(pair, [0, []])
+				pairs.setdefault(pair, [0, set()])
 
 				pairs[pair][0] += word_count
-				pairs[pair][1].append(word)
+				pairs[pair][1].add(word)
 
 		vocab = {i : bytes([i]) for i in range(256)}
 		
@@ -72,9 +73,9 @@ class BPETokenizer:
 							heapq.heappush(pair_heap, (-pairs[left_pair][0], left_pair, pairs[left_pair][1]))
 
 							new_pair = (byte_values[i-1], new_id)
-							pairs.setdefault(new_pair, [0, []])
+							pairs.setdefault(new_pair, [0, set()])
 							pairs[new_pair][0] += word_count
-							pairs[new_pair][1].append(word)
+							pairs[new_pair][1].add(word)
 							heapq.heappush(pair_heap, (-pairs[new_pair][0], new_pair, pairs[new_pair][1]))
 
 						if i < len(byte_values) - 1:
@@ -83,9 +84,9 @@ class BPETokenizer:
 							heapq.heappush(pair_heap, (-pairs[right_pair][0], right_pair, pairs[right_pair][1]))
 
 							new_pair = (new_id, byte_values[i+1])
-							pairs.setdefault(new_pair, [0, []])
+							pairs.setdefault(new_pair, [0, set()])
 							pairs[new_pair][0] += word_count
-							pairs[new_pair][1].append(word)
+							pairs[new_pair][1].add(word)
 							heapq.heappush(pair_heap, (-pairs[new_pair][0], new_pair, pairs[new_pair][1]))
 
 					i += 1
@@ -134,5 +135,24 @@ class BPETokenizer:
 	def decode(self, tokens):
 
 		return b"".join(list(map(lambda x : self.vocab[x], tokens))).decode("utf-8")
+
+	def dump(self, path):
+		data = {
+			"max_vocab_size": self.max_vocab_size,
+			"vocab": {str(k): list(v) for k, v in self.vocab.items()},
+			"merges": {f"{k[0]},{k[1]}": v for k, v in self.merges.items()},
+		}
+		with open(path, "w", encoding="utf-8") as fd:
+			json.dump(data, fd)
+
+	def load(self, path):
+		with open(path, "r", encoding="utf-8") as fd:
+			data = json.load(fd)
+		self.max_vocab_size = data["max_vocab_size"]
+		self.vocab = {int(k): bytes(v) for k, v in data["vocab"].items()}
+		self.merges = {
+			tuple(int(x) for x in k.split(",")): v
+			for k, v in data["merges"].items()
+		}
 
 
