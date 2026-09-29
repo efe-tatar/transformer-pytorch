@@ -18,6 +18,8 @@ class BPETokenizer:
 				texts.append(fd.read())
 		corpus = "\n\n".join(texts)
 
+		print(f"training corpus of {len(corpus)} characters")
+
 		pattern = r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 		regex = re.compile(pattern)
 

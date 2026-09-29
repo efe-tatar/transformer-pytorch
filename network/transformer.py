@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import math
 
-class Transformer(torch.nn.Module):
+class TransformerBlock(torch.nn.Module):
 
 	def __init__(self, embedding_dimension, nb_heads, nb_kv_heads, max_seq_len):
 		super().__init__()
@@ -10,7 +10,7 @@ class Transformer(torch.nn.Module):
 		self.embedding_dimension = embedding_dimension
 		self.nb_heads = nb_heads
 		self.head_dim = embedding_dimension // nb_heads
-		self.head_dim_squared = math.sqrt(self.head_dim)
+		self.head_dim_sqrt = math.sqrt(self.head_dim)
 		self.max_seq_len = max_seq_len
 		# self.nb_query_heads = nb_heads
 		self.nb_kv_heads = nb_kv_heads
@@ -173,7 +173,7 @@ class Transformer(torch.nn.Module):
 
 		# can't do this because of third dimension: batch
 		# scores = (Q @ K.T) / math.sqrt(self.embedding_dimension)
-		scores = (Q @ effective_K.transpose(-2, -1)) / self.head_dim_squared
+		scores = (Q @ effective_K.transpose(-2, -1)) / self.head_dim_sqrt
 
 		# mask = torch.triu(torch.ones(scores.shape), diagonal=1).bool()
 		# turns out torch.ones(scores.shape) will need to be carried over to the gpu

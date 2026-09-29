@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import math
-from network.transformer import Transformer
+from network.transformer import TransformerBlock
 
 class CausalLM(torch.nn.Module):
 
@@ -17,9 +17,10 @@ class CausalLM(torch.nn.Module):
 
 		self.embedding_dropout = torch.nn.Dropout(0.1)
 
-		self.blocks = torch.nn.ModuleList([Transformer(embedding_dimension, nb_heads, nb_kv_heads, max_seq_len) for i in range(nb_trans_blocks)])
+		self.blocks = torch.nn.ModuleList([TransformerBlock(embedding_dimension, nb_heads, nb_kv_heads, max_seq_len) for i in range(nb_trans_blocks)])
 
-		self.post_trans_norm_layer = torch.nn.LayerNorm(embedding_dimension)
+		# self.post_trans_norm_layer = torch.nn.LayerNorm(embedding_dimension)
+		self.post_trans_norm_layer = torch.nn.RMSNorm(embedding_dimension)
 
 		self.lm_head = torch.nn.Linear(embedding_dimension, vocabulary_size, bias=False)
 		# this is called weight tying.
