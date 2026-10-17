@@ -87,3 +87,34 @@ class CausalLM(torch.nn.Module):
 			return logits, kv_cache_list, new_cached_seq_len
 		else:
 			return logits
+
+	@torch.no_grad()
+	def generate(self, ids, max_new_tokens, temperature=1.0, top_k=None, stop_token=None):
+		# ids: (batch, prompt_len) LongTensor -> (batch, prompt_len + new) LongTensor
+		# prefill the whole prompt once, then feed one token at a time through the kv cache.
+		# the cache is allocated for max_seq_len positions, so generation stops there.
+		was_training = self.training
+		self.eval()
+
+		max_new_tokens = min(max_new_tokens, self.max_seq_len - ids.shape[1])
+		logits, kv_cache_list, cached_seq_len = self(ids, use_cache=True)
+		for _ in range(max_new_tokens):
+			next_logits = logits[:, -1, :].float()
+			if temperature == 0:
+				next_token = next_logits.argmax(dim=-1, keepdim=True)
+			else:
+				next_logits = next_logits / temperature
+				if top_k is not None:
+					kth_largest = torch.topk(next_logits, min(top_k, next_logits.shape[-1])).values[:, -1:]
+					next_logits = next_logits.masked_fill(next_logits < kth_largest, float("-inf"))
+				probs = torch.softmax(next_logits, dim=-1)
+				next_token = torch.multinomial(probs, num_samples=1)
+			ids = torch.cat([ids, next_token], dim=1)
+			if stop_token is not None and (next_token == stop_token).all():
+				break
+			logits, kv_cache_list, cached_seq_len = self(
+				next_token, use_cache=True, kv_cache_list=kv_cache_list, cached_seq_len=cached_seq_len
+			)
+
+		self.train(was_training)
+		return ids
