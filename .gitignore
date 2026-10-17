@@ -12,3 +12,5 @@ data/fineweb*/
 
 # scratch
 lmao/
+data/eval_texts/
+*.log

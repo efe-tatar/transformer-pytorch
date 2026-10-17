@@ -4,3 +4,4 @@ regex
 datasets
 wandb
 pytest
+tiktoken

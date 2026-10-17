@@ -101,10 +101,12 @@ TRAIN_PRESETS = {
 	"small_ablation": TrainConfig(
 		micro_batch_size=32, total_batch_tokens=2 ** 18, max_steps=2000, warmup_steps=200,
 		max_lr=1.5e-3, min_lr=1.5e-4, compile=True, out_dir="checkpoints/small_ablation",
+		data_dir="data/fineweb_edu_3b",
 	),
 	"base_100m": TrainConfig(
 		micro_batch_size=16, total_batch_tokens=2 ** 19, max_steps=5000, warmup_steps=700,
 		max_lr=6e-4, min_lr=6e-5, compile=True, out_dir="checkpoints/base_100m",
+		data_dir="data/fineweb_edu_3b",
 	),
 }
 

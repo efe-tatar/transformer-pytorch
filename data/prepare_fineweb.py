@@ -53,8 +53,9 @@ def train_tokenizer(docs, vocab_size, path):
 	t0 = time.time()
 	tokenizer.train_from_iterator(docs)
 	tokenizer.dump(path)
-	print(f"tokenizer: {tokenizer.vocab_size} tokens, trained in {time.time() - t0:.0f}s -> {path}")
-	return tokenizer
+	elapsed = time.time() - t0
+	print(f"tokenizer: {tokenizer.vocab_size} tokens, trained in {elapsed:.0f}s -> {path}")
+	return elapsed
 
 
 # ---- worker side (one tokenizer per process) ----
@@ -134,11 +135,12 @@ def main():
 
 	os.makedirs(args.out_dir, exist_ok=True)
 	tokenizer_path = os.path.join(args.out_dir, "tokenizer.json")
+	tokenizer_seconds = None  # stays None when an existing tokenizer is reused
 	if os.path.exists(tokenizer_path):
 		print(f"reusing tokenizer at {tokenizer_path}")
 	else:
 		print(f"training tokenizer on the first {args.tokenizer_chars / 1e6:.0f}M characters...")
-		train_tokenizer(take_chars(stream_documents(args.dataset, args.subset), args.tokenizer_chars),
+		tokenizer_seconds = train_tokenizer(take_chars(stream_documents(args.dataset, args.subset), args.tokenizer_chars),
 						args.vocab_size, tokenizer_path)
 
 	print(f"encoding up to {args.max_tokens / 1e6:,.0f}M tokens with {args.workers} workers...")
@@ -152,7 +154,15 @@ def main():
 	print(f"done: {total / 1e6:,.1f}M tokens in {elapsed:.0f}s ({total / elapsed / 1e3:,.0f}k tokens/s)")
 
 	with open(os.path.join(args.out_dir, "meta.json"), "w") as fd:
-		json.dump({**vars(args), "val_tokens_written": counts["val"], "train_tokens_written": counts["train"]}, fd, indent=2)
+		json.dump({
+			**vars(args),
+			"val_tokens_written": counts["val"],
+			"train_tokens_written": counts["train"],
+			"tokenizer_seconds": round(tokenizer_seconds) if tokenizer_seconds is not None else None,
+			"encode_seconds": round(elapsed),
+			"encode_tokens_per_second": round(total / elapsed),
+			"cpu_count": mp.cpu_count(),
+		}, fd, indent=2)
 
 
 if __name__ == "__main__":

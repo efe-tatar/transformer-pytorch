@@ -43,14 +43,42 @@ and tested; pretraining runs on FineWeb-Edu are next.
 | `--n_kv_heads` | `4` (GQA) | `12` (MHA), `1` (MQA) |
 | `--attn_impl` | `manual` | `sdpa` |
 
+## Results so far
+
+### Tokenizer
+
+32k-token byte-level BPE trained on 300M characters of FineWeb-Edu (144 s), compared with
+GPT-2's and GPT-4's tokenizers on text it never saw during training. Characters per token,
+higher is better (fewer tokens for the same text):
+
+| Text | Ours (32k) | GPT-2 (50k) | GPT-4 (100k) |
+|---|---|---|---|
+| FineWeb-Edu, held out | **4.62** | 4.62 | 4.80 |
+| Sherlock Holmes (Gutenberg) | **3.75** | 3.62 | 4.09 |
+| Shakespeare | 3.18 | 3.30 | 3.70 |
+| Python (this repo) | 2.16 | 2.39 | 3.63 |
+
+On modern English prose it matches or beats GPT-2 with a 35% smaller vocabulary, and stays
+within 4% of GPT-4's on its own domain. It is slightly behind GPT-2 on Shakespeare's Early
+Modern English, and weakest on code: the training data contains almost none, while GPT-4's
+tokenizer was trained on large amounts of it. Reproduce with
+[tokenizer/evaluate.py](tokenizer/evaluate.py).
+
+### Data pipeline
+
+3B tokens of FineWeb-Edu encoded into `uint16` shards in 26 min, **1.9M tokens/s** on a
+12-core CPU, in pure Python, using multiprocessing and a word-level encode cache. The cache
+alone made encoding about 11× faster (173k → 1.9M tokens/s).
+
 ## Quickstart
 
 ```bash
 pip install -r requirements.txt
 
-# 1. data: trains the tokenizer, then writes token shards to data/fineweb_edu/
-python data/prepare_fineweb.py --max-tokens 5e6 --tokenizer-chars 20e6     # small debug set
-python data/prepare_fineweb.py --max-tokens 3e9                            # pretraining set
+# 1. data: trains the tokenizer, then writes token shards
+python data/prepare_fineweb.py --max-tokens 5e6 --tokenizer-chars 20e6     # debug set -> data/fineweb_edu/
+python data/prepare_fineweb.py --out-dir data/fineweb_edu_3b --max-tokens 3e9 --tokenizer-chars 300e6   # pretraining set
+python tokenizer/evaluate.py                                               # compression vs GPT-2 / GPT-4 tokenizers
 
 # 2. train
 python train.py --preset debug_cpu                                   # ~2M params, runs on a laptop CPU
@@ -93,6 +121,7 @@ config.py                  model / training configs and presets
 network/transformer.py     attention block (RoPE, GQA, KV cache, manual + SDPA)
 network/causal_lm.py       full model, init, generation
 tokenizer/bpe.py           byte-level BPE
+tokenizer/evaluate.py      compression benchmark vs GPT-2 / GPT-4 tokenizers
 data/prepare_fineweb.py    download, tokenizer training, sharding
 training/                  data loader, LR schedule, optimizer, train step, checkpoints
 train.py                   training entry point
