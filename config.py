@@ -40,7 +40,8 @@ MODEL_PRESETS = {
 	# ~40M params. Size used for the Phase 2 ablations.
 	"small_ablation": ModelConfig(dim=512, n_layers=8, n_heads=8, n_kv_heads=4, max_seq_len=1024),
 	# ~100M params (25M of it the tied embedding). The main Phase 1 run.
-	"gpt2_small": ModelConfig(dim=768, n_layers=12, n_heads=12, n_kv_heads=4, max_seq_len=1024),
+	# Same width/depth/heads/context as GPT-2 small (124M), so results can be compared with it.
+	"base_100m": ModelConfig(dim=768, n_layers=12, n_heads=12, n_kv_heads=4, max_seq_len=1024),
 }
 
 
@@ -101,9 +102,9 @@ TRAIN_PRESETS = {
 		micro_batch_size=32, total_batch_tokens=2 ** 18, max_steps=2000, warmup_steps=200,
 		max_lr=1.5e-3, min_lr=1.5e-4, compile=True, out_dir="checkpoints/small_ablation",
 	),
-	"gpt2_small": TrainConfig(
+	"base_100m": TrainConfig(
 		micro_batch_size=16, total_batch_tokens=2 ** 19, max_steps=5000, warmup_steps=700,
-		max_lr=6e-4, min_lr=6e-5, compile=True, out_dir="checkpoints/gpt2_small",
+		max_lr=6e-4, min_lr=6e-5, compile=True, out_dir="checkpoints/base_100m",
 	),
 }
 

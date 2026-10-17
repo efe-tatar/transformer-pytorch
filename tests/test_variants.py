@@ -66,7 +66,7 @@ def test_kv_cache_follows_activation_dtype():
 @pytest.mark.parametrize("name,low,high", [
     ("debug_cpu", 1e6, 4e6),
     ("small_ablation", 30e6, 50e6),
-    ("gpt2_small", 90e6, 130e6),
+    ("base_100m", 90e6, 130e6),
 ])
 def test_preset_param_counts(name, low, high):
     with torch.device("meta"):

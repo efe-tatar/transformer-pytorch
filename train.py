@@ -3,9 +3,9 @@ Pretrain CausalLM on the token shards made by data/prepare_fineweb.py.
 
 Usage:
     python train.py --preset debug_cpu
-    python train.py --preset gpt2_small --max_steps=2000 --wandb=true
-    python train.py --preset gpt2_small --resume          # continue from out_dir/latest.pt
-    torchrun --nproc_per_node=2 train.py --preset gpt2_small --dtype=fp16
+    python train.py --preset base_100m --max_steps=2000 --wandb=true
+    python train.py --preset base_100m --resume          # continue from out_dir/latest.pt
+    torchrun --nproc_per_node=2 train.py --preset base_100m --dtype=fp16
 
 Any ModelConfig / TrainConfig field (see config.py) can be overridden with --key=value.
 """
