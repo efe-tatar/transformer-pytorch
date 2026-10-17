@@ -232,11 +232,13 @@ def main():
 			dt = time.time() - t0
 			tokens_per_s = cfg.total_batch_tokens / dt
 			mfu = flops_per_token * tokens_per_s / (peak * world) if peak else None
+			mem_gb = torch.cuda.max_memory_allocated(device) / 1e9 if device.type == "cuda" else None
 			log(f"step {step:6d} | loss {loss:.4f} | lr {lr:.2e} | grad norm {float(grad_norm):.3f} | "
-				f"{dt * 1000:.0f}ms | {tokens_per_s / 1e3:,.1f}k tok/s" + (f" | mfu {mfu:.1%}" if mfu else ""))
+				f"{dt * 1000:.0f}ms | {tokens_per_s / 1e3:,.1f}k tok/s" + (f" | mfu {mfu:.1%}" if mfu else "")
+				+ (f" | peak mem {mem_gb:.1f}GB" if mem_gb else ""))
 			log_metrics(step, {"train/loss": loss, "lr": lr, "grad_norm": float(grad_norm),
 							   "tokens_per_s": tokens_per_s, "tokens_seen": (step + 1) * cfg.total_batch_tokens,
-							   **({"mfu": mfu} if mfu else {})})
+							   **({"mfu": mfu} if mfu else {}), **({"peak_mem_gb": mem_gb} if mem_gb else {})})
 
 		completed = step + 1
 		if master and (completed % cfg.checkpoint_interval == 0
