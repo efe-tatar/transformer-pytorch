@@ -1,0 +1,6 @@
+torch>=2.5
+numpy
+regex
+datasets
+wandb
+pytest

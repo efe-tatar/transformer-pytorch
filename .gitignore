@@ -1,2 +1,14 @@
 __pycache__/
 *.pyc
+# training artifacts
+examples/checkpoints/
+checkpoints/
+wandb/
+*.pt
+*.bin
+*.npy
+data/fineweb*/
+.pytest_cache/
+
+# scratch
+lmao/
