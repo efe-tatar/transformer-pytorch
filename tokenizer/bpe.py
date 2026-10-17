@@ -159,7 +159,12 @@ class BPETokenizer:
 			# TODO(step 5, yours): memoize word -> token ids in self.encode_cache.
 			# Words repeat a lot in natural text, so most calls become a dict lookup.
 			# tests/test_bpe_cache.py tells you when it's right.
-			tokens.extend(self._encode_word(word))
+			if word in self.encode_cache:
+				word_bytes = self.encode_cache[word]
+			else:
+				word_bytes = self._encode_word(word)
+				self.encode_cache[word] = word_bytes
+			tokens.extend(word_bytes)
 
 		return tokens
 

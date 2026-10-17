@@ -233,4 +233,12 @@ class TransformerBlock(torch.nn.Module):
 		#    means True = "may attend", the opposite of self.mask
 		#  - dropout_p=self.cfg.dropout only while self.training
 		# tests/test_sdpa.py tells you when it's right.
-		raise NotImplementedError("step 4: implement _sdpa_attention")
+		batch_size, _, seq_len, _ = Q.shape
+
+		dropout = self.cfg.dropout if self.training else 0.0
+
+		if past_len == 0 and total_len == seq_len:
+			return torch.nn.functional.scaled_dot_product_attention(query=Q, key=K, value=V, dropout_p=dropout, is_causal=True, enable_gqa=True)
+		else:
+			mask = torch.logical_not(self.mask[past_len:past_len + seq_len, :total_len])
+			return torch.nn.functional.scaled_dot_product_attention(query=Q, key=K, value=V, attn_mask=mask, dropout_p=dropout, enable_gqa=True)

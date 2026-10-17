@@ -2,23 +2,31 @@ import torch
 
 
 def configure_optimizer(model, weight_decay, lr, betas=(0.9, 0.95), device_type="cpu"):
-	# TODO(step 7, yours): return a torch.optim.AdamW with two param groups
-	#  - weight_decay applied to the matmul weights (every nn.Linear weight)
-	#  - weight_decay = 0 for everything else: norm weights/biases, embeddings
-	#    (careful: lm_head.weight IS token_embedding.weight -- weight tying --
-	#    each parameter must appear in exactly one group)
-	#  - fused=True when device_type == "cuda" (one kernel for the whole update)
-	# tests/test_optim.py tells you when it's right.
-	raise NotImplementedError("step 7: implement configure_optimizer")
-	torch.optim.AdamW(
+	# weight decay pulls weights towards 0 at every step. That's a useful regulariser
+	# for the big matmul weights, but harmful elsewhere:
+	#  - norm weights are scales initialised at 1, decaying them fights the normalisation
+	#  - embeddings are lookup rows, a rare token's row would just shrink to 0 between the
+	#    few steps where it gets a gradient
+	# so: decay every nn.Linear weight, nothing else.
+
+	# dict keyed by id(): lm_head.weight IS token_embedding.weight (weight tying),
+	# so it shows up twice in model.modules() but must only be counted once.
+	# it's an embedding first, so it goes in the no-decay group.
+	decay = {id(m.weight): m.weight for m in model.modules() if isinstance(m, torch.nn.Linear)}
+	decay.pop(id(model.token_embedding.weight), None)
+
+	# model.parameters() already de-duplicates shared tensors
+	no_decay = [p for p in model.parameters() if id(p) not in decay]
+
+	return torch.optim.AdamW(
 		[
-			{
-				"params": [m for m in model.modules() if isinstance(m, nn)],
-				"weight_decay": weight_decay
-			},
-			{
-				"params": 1,
-				"weight_decay": 0
-			}
-		]
+			{"params": list(decay.values()), "weight_decay": weight_decay},
+			{"params": no_decay, "weight_decay": 0.0},
+		],
+		lr=lr,
+		# beta2 = 0.95 instead of pytorch's 0.999: the second-moment estimate adapts faster,
+		# which makes LLM pretraining more stable against loss spikes (GPT-3, Llama)
+		betas=betas,
+		# fused: one CUDA kernel updates every parameter, instead of one launch per tensor
+		fused=device_type == "cuda",
 	)

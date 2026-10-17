@@ -37,6 +37,9 @@ class CausalLM(torch.nn.Module):
 		self.lm_head.weight = self.token_embedding.weight
 
 		self.apply(self._init_weights)
+		for block in self.blocks:
+			for projection in block.output_projections():
+				torch.nn.init.normal_(projection.weight, 0, 0.02/math.sqrt(2*self.cfg.n_layers))
 
 	def _init_weights(self, module):
 		# TODO(step 3, yours): pytorch's default init is N(0, 1) for nn.Embedding,
@@ -45,7 +48,12 @@ class CausalLM(torch.nn.Module):
 		# residual output projections (block.output_projections()) to
 		# std = 0.02 / sqrt(2 * n_layers).
 		# tests/test_init.py tells you when it's right.
-		pass
+		if isinstance(module, torch.nn.Linear):
+			torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+			if module.bias is not None:
+				torch.nn.init.zeros_(module.bias)
+		elif isinstance(module, torch.nn.Embedding):
+			torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
 	def forward(self, tokens, use_cache=False, kv_cache_list=None, cached_seq_len=0):
 

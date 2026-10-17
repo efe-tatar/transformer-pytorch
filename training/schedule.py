@@ -7,4 +7,7 @@ def get_lr(step, warmup_steps, max_steps, max_lr, min_lr):
 	#  - warmup_steps .. max_steps: cosine decay from max_lr down to min_lr
 	#  - after max_steps: stay at min_lr
 	# tests/test_schedule.py tells you when it's right.
-	raise NotImplementedError("step 7: implement get_lr")
+	if step > max_steps: return min_lr
+	elif step < warmup_steps: return max_lr * (step + 1) / warmup_steps
+	else:
+		return min_lr + 0.5 * (max_lr - min_lr) * (1 + math.cos(math.pi * (step - warmup_steps) / (max_steps - warmup_steps)))

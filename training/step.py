@@ -33,4 +33,52 @@ def train_step(model, next_batch, optimizer, accum_steps, device, amp_dtype=None
 	#    then scaler.step + scaler.update instead of optimizer.step
 	# then clip, step, zero_grad(set_to_none=True).
 	# tests/test_step.py tells you when it's right.
-	raise NotImplementedError("step 7: implement train_step")
+	# a tensor on the device: adding to it doesn't force a GPU -> CPU sync every micro-step
+	total_loss = torch.zeros((), device=device)
+
+	for micro_step in range(accum_steps):
+		if micro_step == accum_steps-1:
+			set_grad_sync(model, True)
+		else:
+			set_grad_sync(model, False)
+
+		x, y = next_batch()
+		# .to() returns a new tensor, it doesn't move x in place
+		x = x.to(device, non_blocking=True)
+		y = y.to(device, non_blocking=True)
+
+		with torch.autocast(device.type, dtype=amp_dtype, enabled=amp_dtype is not None):
+			logits = model(x)
+
+		# cross_entropy wants (N, vocab) predictions vs (N,) targets: flatten batch and time.
+		# .float(): softmax in fp32 even when the logits came out of autocast in bf16
+		loss = F.cross_entropy(logits.float().view(-1, logits.size(-1)), y.view(-1))
+		# backward() *adds* into .grad, so accum_steps backwards of the mean loss would sum to
+		# accum_steps x the big-batch gradient. dividing makes the sum equal the mean.
+		loss = loss / accum_steps
+
+		# detach: only the value is needed for logging, not the graph behind it
+		total_loss += loss.detach()
+
+		if scaler is not None:
+			scaler.scale(loss).backward()
+		else:
+			loss.backward()
+
+	if scaler is not None:
+		# gradients are still multiplied by the fp16 loss scale: undo that before clipping
+		scaler.unscale_(optimizer)
+	# returns the norm *before* clipping, which is what's worth logging
+	grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+
+	if scaler is not None:
+		# skips the step if the fp16 gradients overflowed to inf/nan, and adjusts the scale
+		scaler.step(optimizer)
+		scaler.update()
+	else:
+		optimizer.step()
+
+	# set_to_none: frees the gradient memory instead of filling it with zeros
+	optimizer.zero_grad(set_to_none=True)
+
+	return total_loss, grad_norm
