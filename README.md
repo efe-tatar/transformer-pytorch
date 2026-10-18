@@ -5,8 +5,9 @@ the ground up in PyTorch, with no `transformers` or `tokenizers` library.
 Each architecture choice sits behind a config flag, so it can be compared against
 its alternative under the same training budget.
 
-**Status:** the model, tokenizer, data pipeline and training loop are done
-and tested; pretraining runs on FineWeb-Edu are next.
+**Status:** a 100M-parameter model has been pretrained from scratch on 3B tokens of FineWeb-Edu
+(one A100, 4.5 hours) and reaches **27.7% on HellaSwag**, against 29.6% for GPT-2 124M
+measured with the same script. Next: Hugging Face export, inference benchmarks and a demo.
 
 ## What's implemented
 
@@ -43,7 +44,50 @@ and tested; pretraining runs on FineWeb-Edu are next.
 | `--n_kv_heads` | `4` (GQA) | `12` (MHA), `1` (MQA) |
 | `--attn_impl` | `manual` | `sdpa` |
 
-## Results so far
+## Results
+
+### Pretraining: `base_100m` on 3B tokens
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/base_100m_training_dark.png">
+  <img alt="Training and validation loss falling from 10.5 to 3.22 over 3B tokens, and the warmup + cosine learning-rate schedule" src="assets/base_100m_training_light.png">
+</picture>
+
+| | |
+|---|---|
+| Model | 100.7M parameters: 768d × 12 layers, 12 heads / 4 KV heads (GQA), RoPE, SwiGLU, RMSNorm, 32k vocab |
+| Data | 2.99B tokens of FineWeb-Edu, one epoch (no token seen twice) |
+| Batch / schedule | 0.5M tokens per step, 5700 steps, AdamW, LR 6e-4 with 700-step warmup and cosine decay to 6e-5 |
+| Hardware | 1× A100 80GB (Google Colab), bf16, `torch.compile`, SDPA attention |
+| Throughput | 184k tokens/s, **42% MFU**, 14.9 GB peak memory |
+| Time / cost | 4.5 hours, ~31 Colab compute units |
+| Final validation loss | **3.223** (perplexity 25.1) |
+
+Training and validation loss track each other the whole way, as expected with no repeated data.
+Full log: [runs/base_100m/train_log.txt](runs/base_100m/train_log.txt).
+
+**HellaSwag** (10,042 validation questions, pick the right ending out of 4), scored by
+[evaluation/hellaswag.py](evaluation/hellaswag.py) with identical code for both models:
+
+| Model | Params | Training tokens | acc | acc_norm |
+|---|---|---|---|---|
+| random guessing | | | 25.0% | 25.0% |
+| **ours, `base_100m`** | 100M | 3B | 27.7% | **27.7%** |
+| GPT-2 124M (OpenAI) | 124M | undisclosed, far more | 28.7% | 29.6% |
+
+The model closes about 60% of the gap between chance and GPT-2 124M after 3B tokens.
+The GPT-2 score matches its published value, which validates the evaluation. Public GPT-2
+reproductions on FineWeb-Edu reach GPT-2's level after roughly 5-10B tokens, so the remaining
+gap is the training budget, the next lever to pull.
+
+Sample after training (prompt "The", temperature 0.8):
+
+> The impact of the COVID-19 pandemic on public health is being felt everywhere. The COVID-19
+> pandemic has affected every aspect of our lives. From the initial COVID-19 public health crises
+> to the response to the COVID-19 pandemic, ...
+
+Fluent and on topic, but repetitive and shallow: typical for a 100M model.
+Try it with [colab/playground.ipynb](colab/playground.ipynb).
 
 ### Tokenizer
 
@@ -87,7 +131,16 @@ torchrun --nproc_per_node=2 train.py --preset base_100m --dtype=fp16   # 2 GPUs 
 
 # 3. pick up an interrupted run
 python train.py --preset base_100m --resume
+
+# 4. evaluate and plot
+python evaluation/hellaswag.py --checkpoint checkpoints/base_100m/best.pt
+python evaluation/hellaswag.py --hf gpt2                                      # baseline
+python tools/plot_training.py checkpoints/base_100m/metrics.jsonl --tokens-per-step 524288
 ```
+
+On Colab: [colab/train_base_100m.ipynb](colab/train_base_100m.ipynb) (training, with a smoke test
+and resume after disconnects), [colab/evaluate_hellaswag.ipynb](colab/evaluate_hellaswag.ipynb),
+[colab/playground.ipynb](colab/playground.ipynb).
 
 Every field in [config.py](config.py) can be overridden with `--key=value`.
 
@@ -103,7 +156,7 @@ Every field in [config.py](config.py) can be overridden with `--key=value`.
 python -m pytest tests
 ```
 
-The 100 tests cover:
+The 103 tests cover:
 - KV cache vs full forward, for every architecture variant
 - causal masking
 - SDPA vs manual attention, with and without the cache
@@ -113,6 +166,7 @@ The 100 tests cover:
 - LR schedule and optimizer parameter groups
 - accumulated gradients equal to a single large batch
 - exact resume after an interruption
+- HellaSwag scoring (only ending tokens scored, shifted by one, length normalisation)
 
 ## Layout
 
@@ -125,6 +179,10 @@ tokenizer/evaluate.py      compression benchmark vs GPT-2 / GPT-4 tokenizers
 data/prepare_fineweb.py    download, tokenizer training, sharding
 training/                  data loader, LR schedule, optimizer, train step, checkpoints
 train.py                   training entry point
+evaluation/hellaswag.py    HellaSwag eval, for our checkpoints and Hugging Face GPT-2
+tools/plot_training.py     training curves from metrics.jsonl or the printed log
+colab/                     notebooks: training, evaluation, playground
+runs/                      logs of the training runs
 tests/                     pytest suite
 ```
 
@@ -133,7 +191,8 @@ tests/                     pytest suite
 - [x] Llama-style architecture: RMSNorm, SwiGLU, RoPE, GQA, KV cache
 - [x] BPE tokenizer trained from scratch
 - [x] Pretraining pipeline: mixed precision, DDP, gradient accumulation, exact resume
-- [ ] Pretrain ~100M model on FineWeb-Edu, evaluate on HellaSwag against GPT-2 124M
+- [x] Pretrain a 100M model on 3B tokens of FineWeb-Edu, evaluate on HellaSwag against GPT-2 124M
+- [ ] Longer run (~10B tokens) to match GPT-2 124M on HellaSwag
 - [ ] Architecture ablations (GQA vs MHA, RoPE vs learned, SwiGLU vs GELU, RMSNorm vs LayerNorm)
 - [ ] Tokenizer efficiency study on French and Turkish
 - [ ] Instruction tuning (SFT) and LoRA implemented from scratch
