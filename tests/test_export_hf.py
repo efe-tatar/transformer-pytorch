@@ -14,6 +14,7 @@ from data.prepare_fineweb import SPECIAL_TOKENS
 from network.causal_lm import CausalLM
 from tokenizer.bpe import BPETokenizer
 from tools.export_hf import SAMPLE_TEXTS, check, to_hf_config, to_hf_state_dict, to_hf_tokenizer
+from tools.load_hf import load_hf
 
 
 @pytest.mark.parametrize("n_kv_heads", [4, 2, 1], ids=["mha", "gqa", "mqa"])
@@ -39,3 +40,10 @@ def test_export_matches_our_model_and_tokenizer(tmp_path, n_kv_heads):
     reloaded = transformers.AutoModelForCausalLM.from_pretrained(tmp_path).eval()
     tok = transformers.AutoTokenizer.from_pretrained(tmp_path)
     assert check(model, bpe, reloaded, tok) < 1e-4
+
+    # and back: the Hugging Face files load into our own classes bit for bit
+    back_model, back_tok = load_hf(str(tmp_path))
+    for name, tensor in model.state_dict().items():
+        assert torch.equal(tensor, back_model.state_dict()[name]), name
+    assert back_model.cfg.rope_base == model.cfg.rope_base
+    assert (back_tok.vocab, back_tok.merges, back_tok.special_tokens) == (bpe.vocab, bpe.merges, bpe.special_tokens)

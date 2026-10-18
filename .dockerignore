@@ -1,0 +1,12 @@
+.git
+.vscode
+**/__pycache__
+data
+checkpoints
+exported
+runs
+assets
+examples
+colab
+wandb
+*.log

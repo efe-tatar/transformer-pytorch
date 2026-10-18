@@ -1,0 +1,27 @@
+{
+  "hardware": "CPU, 10 threads",
+  "speed": [
+    {
+      "new_tokens": 128,
+      "no_cache_tok_s": 4.516431851728184,
+      "cache_tok_s": 20.367151965497975,
+      "speedup": 4.509566984322948
+    },
+    {
+      "new_tokens": 512,
+      "no_cache_tok_s": 1.8870247009544077,
+      "cache_tok_s": 21.88185874202749,
+      "speedup": 11.595957769371127
+    }
+  ],
+  "kv_cache": {
+    "seq_len": 1024,
+    "gqa_bf16_bytes": 12582912,
+    "mha_bf16_bytes": 37748736
+  },
+  "hf": {
+    "new_tokens": 512,
+    "tok_s": 21.1613919975297,
+    "identical_tokens": true
+  }
+}

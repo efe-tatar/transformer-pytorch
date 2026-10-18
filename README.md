@@ -7,7 +7,9 @@ its alternative under the same training budget.
 
 **Status:** a 100M-parameter model has been pretrained from scratch on 3B tokens of FineWeb-Edu
 (one A100, 4.5 hours) and reaches **27.7% on HellaSwag**, against 29.6% for GPT-2 124M
-measured with the same script. Next: Hugging Face export, inference benchmarks and a demo.
+measured with the same script. It is published on the Hugging Face Hub as
+[`Efe-Tatar/base-100m-fineweb-edu`](https://huggingface.co/Efe-Tatar/base-100m-fineweb-edu)
+in the standard `LlamaForCausalLM` format, verified to match this implementation exactly.
 
 ## What's implemented
 
@@ -89,6 +91,31 @@ Sample after training (prompt "The", temperature 0.8):
 Fluent and on topic, but repetitive and shallow: typical for a 100M model.
 Try it with [colab/playground.ipynb](colab/playground.ipynb).
 
+### Inference
+
+Greedy generation with this project's own inference code, `base_100m`, batch 1, fp32,
+on a 10-thread laptop CPU ([tools/benchmark_inference.py](tools/benchmark_inference.py)):
+
+| New tokens | Without KV cache | With KV cache | Speed-up |
+|---|---|---|---|
+| 128 | 4.5 tok/s | 20.4 tok/s | 4.5× |
+| 512 | 1.9 tok/s | 21.9 tok/s | **11.6×** |
+
+- Without the cache, every new token recomputes the whole sequence, so generation slows down as the text
+  grows. With it, speed stays flat. Both produce identical tokens.
+- Grouped-query attention (4 KV heads for 12 query heads) makes the KV cache **3× smaller**:
+  12 MiB per 1024-token sequence in bf16, against 36 MiB with full multi-head attention.
+- The same weights run through Hugging Face's `LlamaForCausalLM` give identical tokens at about the
+  same speed (21.2 tok/s vs 21.9 tok/s here).
+
+### Hugging Face export
+
+[tools/export_hf.py](tools/export_hf.py) converts a checkpoint to `LlamaForCausalLM` + a fast tokenizer,
+and [tools/load_hf.py](tools/load_hf.py) converts back. The two RoPE layouts differ (this code rotates
+neighbouring dimensions, HF rotates dimension *i* with *i + d/2*), so the Q/K projection rows are
+reordered per head. Tests check identical token ids, logits equal to within 1e-5, identical greedy
+generation, and a bit-exact round trip.
+
 ### Tokenizer
 
 32k-token byte-level BPE trained on 300M characters of FineWeb-Edu (144 s), compared with
@@ -113,6 +140,35 @@ tokenizer was trained on large amounts of it. Reproduce with
 3B tokens of FineWeb-Edu encoded into `uint16` shards in 26 min, **1.9M tokens/s** on a
 12-core CPU, in pure Python, using multiprocessing and a word-level encode cache. The cache
 alone made encoding about 11× faster (173k → 1.9M tokens/s).
+
+## Use the trained model
+
+With plain `transformers`:
+
+```python
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+tok = AutoTokenizer.from_pretrained("Efe-Tatar/base-100m-fineweb-edu")
+model = AutoModelForCausalLM.from_pretrained("Efe-Tatar/base-100m-fineweb-edu")
+
+ids = tok("<|endoftext|>Photosynthesis is the process by which", return_tensors="pt").input_ids
+out = model.generate(ids, max_new_tokens=60, do_sample=True, temperature=0.8, top_k=50)
+print(tok.decode(out[0][1:]))
+```
+
+As an HTTP API running on this project's own inference code ([serve/app.py](serve/app.py), FastAPI):
+
+```bash
+pip install -r serve/requirements.txt
+uvicorn serve.app:app --port 8000          # downloads the model from the Hub on startup
+
+curl -X POST localhost:8000/generate -H "Content-Type: application/json" \
+     -d '{"prompt": "Photosynthesis is the process by which", "max_new_tokens": 60}'
+# also: POST /generate/stream (server-sent events, token by token), GET /health
+```
+
+A [Dockerfile](Dockerfile) for a CPU image of the API and a Gradio demo app ([space/app.py](space/app.py))
+are included as well.
 
 ## Quickstart
 
@@ -156,7 +212,7 @@ Every field in [config.py](config.py) can be overridden with `--key=value`.
 python -m pytest tests
 ```
 
-The 103 tests cover:
+The 113 tests cover:
 - KV cache vs full forward, for every architecture variant
 - causal masking
 - SDPA vs manual attention, with and without the cache
@@ -167,6 +223,8 @@ The 103 tests cover:
 - accumulated gradients equal to a single large batch
 - exact resume after an interruption
 - HellaSwag scoring (only ending tokens scored, shifted by one, length normalisation)
+- Hugging Face export: same tokens, logits and greedy generation as `transformers`, exact round trip (MHA, GQA, MQA)
+- the API: output identical to `generate()`, streaming joins back to the full text, input validation
 
 ## Layout
 
@@ -181,6 +239,11 @@ training/                  data loader, LR schedule, optimizer, train step, chec
 train.py                   training entry point
 evaluation/hellaswag.py    HellaSwag eval, for our checkpoints and Hugging Face GPT-2
 tools/plot_training.py     training curves from metrics.jsonl or the printed log
+tools/export_hf.py         export to Hugging Face LlamaForCausalLM (+ model card)
+tools/load_hf.py           load a Hugging Face export back into our own classes
+tools/benchmark_inference.py   KV cache / GQA / transformers comparison
+serve/                     FastAPI server (+ Dockerfile at the root)
+space/                     Gradio demo app
 colab/                     notebooks: training, evaluation, playground
 runs/                      logs of the training runs
 tests/                     pytest suite
@@ -196,4 +259,5 @@ tests/                     pytest suite
 - [ ] Architecture ablations (GQA vs MHA, RoPE vs learned, SwiGLU vs GELU, RMSNorm vs LayerNorm)
 - [ ] Tokenizer efficiency study on French and Turkish
 - [ ] Instruction tuning (SFT) and LoRA implemented from scratch
-- [ ] Export to Hugging Face `LlamaForCausalLM`, inference benchmarks, API + demo
+- [x] Export to Hugging Face `LlamaForCausalLM`, inference benchmarks, FastAPI server
+- [ ] Hosted live demo
