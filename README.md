@@ -89,7 +89,10 @@ Sample after training (prompt "The", temperature 0.8):
 > to the response to the COVID-19 pandemic, ...
 
 Fluent and on topic, but repetitive and shallow: typical for a 100M model.
-Try it with [colab/playground.ipynb](colab/playground.ipynb).
+Try it yourself, no account needed (downloads the model from the Hub and runs it on this project's own
+inference code; a free CPU runtime is enough):
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/efe-tatar/transformer-pytorch/blob/main/colab/playground.ipynb)
 
 ### Inference
 
