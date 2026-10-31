@@ -11,7 +11,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows console default codec can't print U+FFFD etc.
+if hasattr(sys.stdout, "reconfigure"):  # not in Jupyter/Colab, whose output stream can't be reconfigured
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows console default codec can't print U+FFFD etc.
 
 import torch
 

@@ -17,7 +17,8 @@ import sys
 import time
 from dataclasses import replace
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows console default codec
+if hasattr(sys.stdout, "reconfigure"):  # not in Jupyter/Colab, whose output stream can't be reconfigured
+	sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows console default codec
 
 import torch
 import torch.distributed as dist
